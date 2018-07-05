@@ -4,12 +4,21 @@ import brickpi3
 import time
 import random
 import datetime
-
+import json
 import iothub_client
 from iothub_client import IoTHubClient, IoTHubClientError, IoTHubTransportProvider, IoTHubClientResult
 from iothub_client import IoTHubMessage, IoTHubMessageDispositionResult, IoTHubError, DeviceMethodReturnValue
 
-CONNECTION_STRING = ""
+try:
+    import picamera
+except ImportError:
+    pass
+
+
+with open('config.json') as configFie:
+    config = json.load(configFie)
+CONNECTION_STRING = config['connection']
+
 PROTOCOL = IoTHubTransportProvider.MQTT
 BP = None
 
@@ -24,13 +33,16 @@ def send_confirmation_callback(message, result, user_context):
 
 
 def method_callback(method_name, payload, user_context):
-    print ("\nCallback method is called: \nMethodName = %s\nPayload = %s" % (method_name, payload))
+    print ("\nCallback method is called: \nMethodName = %s\nPayload = %s" %
+           (method_name, payload))
     method_return_value = DeviceMethodReturnValue()
-    #Just check invoked operations and do necessary things
+    # Just check invoked operations and do necessary things
     if method_name == "open":
         manage_lid(method_name)
     elif method_name == "close":
         manage_lid(method_name)
+    elif method_name =="photo":
+        takePhoto()
     else:
         manage_lid(method_name)
         method_return_value.response = "{ \"Response\": \"No method is not defined to invoke: %s\" }" % method_name
@@ -77,6 +89,21 @@ def manage_lid(inkey):
     return inkey
 
 
+def takePhoto():
+    # Some custom path to save taken photo
+    resultPath = '/home/pi/Documents/Project/CameraApp/catfood.jpg'
+    try:
+        with picamera.PiCamera() as camera:
+            camera.start_preview()
+            time.sleep(1)
+            camera.capture(resultPath)
+            camera.stop_preview()
+    except Exception as e:
+        print(str(e))
+
+    return resultPath
+
+
 def main():
     print("Hello...\nThis is LEGO.CatFeeder with IoT Hub device/server feature.\nAn IoT Hub can send some messages to invoke some operations")
     print("\nPress Ctrl-C to exit...")
@@ -87,7 +114,8 @@ def main():
         while True:
             lid_status = input("\nOpen or Close lid: ")
             result = manage_lid(lid_status)
-            message = "{\"lid\": \"%s\",\"date\":\"%s\"}" % (lid_status, str(datetime.datetime.now()))
+            message = "{\"lid\": \"%s\",\"date\":\"%s\"}" % (
+                lid_status, str(datetime.datetime.now()))
             message = IoTHubMessage(message)
 
             print("Sending message to IoT Hub: %s" % message.get_string())
