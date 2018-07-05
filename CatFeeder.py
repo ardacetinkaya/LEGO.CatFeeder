@@ -42,7 +42,7 @@ def method_callback(method_name, payload, user_context):
     elif method_name == "close":
         manage_lid(method_name)
     elif method_name =="photo":
-        takePhoto()
+        take_photo()
     else:
         manage_lid(method_name)
         method_return_value.response = "{ \"Response\": \"No method is not defined to invoke: %s\" }" % method_name
@@ -89,7 +89,7 @@ def manage_lid(inkey):
     return inkey
 
 
-def takePhoto():
+def take_photo():
     # Some custom path to save taken photo
     resultPath = '/home/pi/Documents/Project/CameraApp/catfood.jpg'
     try:
