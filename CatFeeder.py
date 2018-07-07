@@ -1,4 +1,4 @@
-import sys
+#import sys
 import tty
 import brickpi3
 import time
@@ -15,145 +15,142 @@ except ImportError:
     pass
 
 
-with open('config.json') as configFie:
-    config = json.load(configFie)
-CONNECTION_STRING = config['connection']
+class CatFeeder:
+    with open('config.json') as configFie:
+        config = json.load(configFie)
+    CONNECTION_STRING = config['connection']
+    TEXT = ""
+    PROTOCOL = IoTHubTransportProvider.MQTT
+    BP = None
+    
+    def catfood_client_init(self):
+        client = IoTHubClient(self.CONNECTION_STRING, self.PROTOCOL)
+        return client
 
-PROTOCOL = IoTHubTransportProvider.MQTT
-BP = None
+    def send_confirmation_callback(self,message, result, user_context):
+        global TEXT
+        time.sleep(0.3)
+        self.TEXT = "\nLEGO.CatFeeder IoT Hub responded to message with status: %s" % (result)
 
+    def method_callback(method_name, payload, user_context):
+        print ("\nCallback method is called: \nMethodName = %s\nPayload = %s" %
+               (method_name, payload))
+        method_return_value = DeviceMethodReturnValue()
 
-def catfood_client_init():
-    client = IoTHubClient(CONNECTION_STRING, PROTOCOL)
-    return client
+        result = command_manager(method_name)
 
-
-def send_confirmation_callback(message, result, user_context):
-    print ("\nLEGO.CatFeeder IoT Hub responded to message with status: %s" % (result))
-
-
-def method_callback(method_name, payload, user_context):
-    print ("\nCallback method is called: \nMethodName = %s\nPayload = %s" %
-           (method_name, payload))
-    method_return_value = DeviceMethodReturnValue()
-
-    # Just check invoked operations and do necessary things
-    if method_name == "open":
-        manage_lid(method_name)
-    elif method_name == "close":
-        manage_lid(method_name)
-    elif method_name =="photo":
-        take_photo()
-    else:
-        manage_lid(method_name)
-        method_return_value.response = "{ \"Response\": \"No method is not defined to invoke: %s\" }" % method_name
-        method_return_value.status = 404
+        method_return_value.response = "{ \"Response\": \" %s is executed\" }" % method_name
+        method_return_value.status = 200
         return method_return_value
 
-    method_return_value.response = "{ \"Response\": \" %s is executed\" }" % method_name
-    method_return_value.status = 200
-    return method_return_value
+    def manage_lid(self,inkey):
+        global BP
 
+        if self.BP == None:
+            self.BP = brickpi3.BrickPi3()
+            try:
+                self.BP.offset_motor_encoder(
+                    self.BP.PORT_A, self.BP.get_motor_encoder(self.BP.PORT_A))
+                self.BP.offset_motor_encoder(
+                    self.BP.PORT_B, self.BP.get_motor_encoder(self.BP.PORT_B))
+                self.BP.offset_motor_encoder(
+                    self.BP.PORT_C, self.BP.get_motor_encoder(self.BP.PORT_C))
+                self.BP.offset_motor_encoder(
+                    self.BP.PORT_D, self.BP.get_motor_encoder(self.BP.PORT_D))
+                print("BrickPi is set and ready to use...")
+            except IOError as error:
+                print("Unexpected BrickPi error: %s. Please re-try" % error)
 
-def manage_lid(inkey):
-    global BP
+        if inkey == 'close':
+            self.BP.set_motor_power(self.BP.PORT_B, 100)
+            time.sleep(0.55)
+            self.BP.set_motor_power(self.BP.PORT_B, 0)
 
-    if BP == None:
-        BP = brickpi3.BrickPi3()
+        elif inkey == 'open':
+            self.BP.set_motor_power(self.BP.PORT_B, -100)
+            time.sleep(0.6)
+            self.BP.set_motor_power(self.BP.PORT_B, 0)
+        else:
+            self.BP.set_motor_power(self.BP.PORT_B, 0)
+            self.BP.reset_all()
+            return "quit"
+
+        time.sleep(0.02)
+        return inkey
+
+    def take_photo(self):
+        # Some custom path to save taken photo
+        resultPath = '/home/pi/Documents/Project/CameraApp/catfood.jpg'
         try:
-            BP.offset_motor_encoder(BP.PORT_A, BP.get_motor_encoder(BP.PORT_A))
-            BP.offset_motor_encoder(BP.PORT_B, BP.get_motor_encoder(BP.PORT_B))
-            BP.offset_motor_encoder(BP.PORT_C, BP.get_motor_encoder(BP.PORT_C))
-            BP.offset_motor_encoder(BP.PORT_D, BP.get_motor_encoder(BP.PORT_D))
-            print("BrickPi is set and ready to use...")
-        except IOError as error:
-            print("Unexpected BrickPi error: %s" % error)
+            with picamera.PiCamera() as camera:
+                camera.start_preview()
+                time.sleep(1)
+                camera.capture(resultPath)
+                camera.stop_preview()
+        except Exception as e:
+            print(str(e))
 
-    if inkey == 'close':
-        BP.set_motor_power(BP.PORT_B, 100)
-        time.sleep(0.55)
-        BP.set_motor_power(BP.PORT_B, 0)
+        return resultPath
 
-    elif inkey == 'open':
-        BP.set_motor_power(BP.PORT_B, -100)
-        time.sleep(0.6)
-        BP.set_motor_power(BP.PORT_B, 0)
-    else:
-        BP.set_motor_power(BP.PORT_B, 0)
-        BP.reset_all()
-        return "quit"
+    def command_manager(self,argument):
+        argument = argument.lower()
+        switcher = {
+            "o": self._open,
+            "c": self._close,
+            "p": self._photo,
+            "q": self._quit
+        }
+        func = switcher.get(argument, "Invalid command")
+        return func()
 
-    time.sleep(0.02)
-    return inkey
+    def _open(self):
+        self.manage_lid("open")
+        return "Opened"
 
+    def _close(self):
+        self.manage_lid("close")
+        return "Closed"
 
-def take_photo():
-    # Some custom path to save taken photo
-    resultPath = '/home/pi/Documents/Project/CameraApp/catfood.jpg'
-    try:
-        with picamera.PiCamera() as camera:
-            camera.start_preview()
-            time.sleep(1)
-            camera.capture(resultPath)
-            camera.stop_preview()
-    except Exception as e:
-        print(str(e))
+    def _photo(self):
+        return self.take_photo()
 
-    return resultPath
+    def _quit(self):
+        print("LEGO.CatFeeder is stopping...")
+        return "Quit"
 
-def command_manager(argument):
-    argument = argument.lower()
-    switcher={
-        "o":_open,
-        "c":_close,
-        "p":_photo,
-        "q":_quit
-    }
-    func = switcher.get(argument, "no command")
-    return func()
+    def run(self):
+        print("Hello...\nThis is LEGO.CatFeeder with IoT Hub device/server feature.\nAn IoT Hub can send some messages to invoke some operations")
+        print("\nPress Ctrl-C to exit...")
+        try:
+            client = self.catfood_client_init()
+            client.set_device_method_callback(self.method_callback, None)
 
-def _open():
-    manage_lid("open")
-    return "Opened"
+            while True:
+                print(self.TEXT, end=" ")
+                print(
+                    "\nPlease enter a command.([o]pen - [c]lose - [p]hoto - [q]uit) : ", end=" ")
+                input_result = input()
+                result = self.command_manager(input_result)
 
-def _close():
-    manage_lid("close")
-    return "Closed"
+                message = "{\"result\": \"%s\",\"date\":\"%s\"}" % (
+                    result, str(datetime.datetime.now()))
 
-def _photo():
-    return take_photo()
+                message = IoTHubMessage(message)
+                client.send_event_async(
+                    message, self.send_confirmation_callback, None)
 
-def _quit():
-    print("LEGO.CatFeeder is stopping...")
-    return "Quit"
+                time.sleep(0.1)
 
-def main():
-    print("Hello...\nThis is LEGO.CatFeeder with IoT Hub device/server feature.\nAn IoT Hub can send some messages to invoke some operations")
-    print("\nPress Ctrl-C to exit...")
-    try:
-        client = catfood_client_init()
-        client.set_device_method_callback(method_callback, None)
+                if result == 'Quit':
+                    break
 
-        while True:
-            input_result = input("\nPlease enter a command.([o]pen - [c]lose - [p]hoto - [q]uit) : ")
-            result = command_manager(input_result)
-            message = "{\"result\": \"%s\",\"date\":\"%s\"}" % (
-                result, str(datetime.datetime.now()))
-            time.sleep(0.1)
-            message = IoTHubMessage(message)
-            client.send_event_async(message, send_confirmation_callback, None)
-            
-            time.sleep(0.1)
-            
-            if result == 'Quit':
-                break
-
-    except IoTHubError as iothub_error:
-        print ("Unexpected error %s from IoTHub" % iothub_error)
-        return
-    except (KeyboardInterrupt, SystemExit):
-        print ("\nLEGO.CatFeeder is stopped...")
+        except IoTHubError as iothub_error:
+            print ("Unexpected error %s from IoTHub" % iothub_error)
+            return
+        except (KeyboardInterrupt, SystemExit):
+            print ("\nLEGO.CatFeeder is stopped...")
 
 
 if __name__ == '__main__':
-    main()
+    feeder = CatFeeder()
+    feeder.run()
