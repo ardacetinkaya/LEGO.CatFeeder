@@ -29,13 +29,14 @@ def catfood_client_init():
 
 
 def send_confirmation_callback(message, result, user_context):
-    print ("LEGO.CatFeeder IoT Hub responded to message with status: %s" % (result))
+    print ("\nLEGO.CatFeeder IoT Hub responded to message with status: %s" % (result))
 
 
 def method_callback(method_name, payload, user_context):
     print ("\nCallback method is called: \nMethodName = %s\nPayload = %s" %
            (method_name, payload))
     method_return_value = DeviceMethodReturnValue()
+
     # Just check invoked operations and do necessary things
     if method_name == "open":
         manage_lid(method_name)
@@ -69,18 +70,15 @@ def manage_lid(inkey):
             print("Unexpected BrickPi error: %s" % error)
 
     if inkey == 'close':
-        #print ("close")
         BP.set_motor_power(BP.PORT_B, 100)
         time.sleep(0.55)
         BP.set_motor_power(BP.PORT_B, 0)
 
     elif inkey == 'open':
-        #print ("open")
         BP.set_motor_power(BP.PORT_B, -100)
         time.sleep(0.6)
         BP.set_motor_power(BP.PORT_B, 0)
     else:
-        #print ("quit")
         BP.set_motor_power(BP.PORT_B, 0)
         BP.reset_all()
         return "quit"
@@ -103,6 +101,31 @@ def take_photo():
 
     return resultPath
 
+def command_manager(argument):
+    argument = argument.lower()
+    switcher={
+        "o":_open,
+        "c":_close,
+        "p":_photo,
+        "q":_quit
+    }
+    func = switcher.get(argument, "no command")
+    return func()
+
+def _open():
+    manage_lid("open")
+    return "Opened"
+
+def _close():
+    manage_lid("close")
+    return "Closed"
+
+def _photo():
+    return take_photo()
+
+def _quit():
+    print("LEGO.CatFeeder is stopping...")
+    return "Quit"
 
 def main():
     print("Hello...\nThis is LEGO.CatFeeder with IoT Hub device/server feature.\nAn IoT Hub can send some messages to invoke some operations")
@@ -112,16 +135,17 @@ def main():
         client.set_device_method_callback(method_callback, None)
 
         while True:
-            lid_status = input("\nOpen or Close lid: ")
-            result = manage_lid(lid_status)
-            message = "{\"lid\": \"%s\",\"date\":\"%s\"}" % (
-                lid_status, str(datetime.datetime.now()))
+            input_result = input("\nPlease enter a command.([o]pen - [c]lose - [p]hoto - [q]uit) : ")
+            result = command_manager(input_result)
+            message = "{\"result\": \"%s\",\"date\":\"%s\"}" % (
+                result, str(datetime.datetime.now()))
+            time.sleep(0.1)
             message = IoTHubMessage(message)
-
-            print("Sending message to IoT Hub: %s" % message.get_string())
             client.send_event_async(message, send_confirmation_callback, None)
-            time.sleep(0.2)
-            if result == 'quit':
+            
+            time.sleep(0.1)
+            
+            if result == 'Quit':
                 break
 
     except IoTHubError as iothub_error:
