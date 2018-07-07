@@ -32,12 +32,12 @@ class CatFeeder:
         time.sleep(0.3)
         self.TEXT = "\nLEGO.CatFeeder IoT Hub responded to message with status: %s" % (result)
 
-    def method_callback(method_name, payload, user_context):
+    def method_callback(self,method_name, payload, user_context):
         print ("\nCallback method is called: \nMethodName = %s\nPayload = %s" %
                (method_name, payload))
         method_return_value = DeviceMethodReturnValue()
 
-        result = command_manager(method_name)
+        result = self.command_manager(method_name)
 
         method_return_value.response = "{ \"Response\": \" %s is executed\" }" % method_name
         method_return_value.status = 200
